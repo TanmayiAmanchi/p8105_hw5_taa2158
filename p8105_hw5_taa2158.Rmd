@@ -129,3 +129,73 @@ sim_final %>%
 
 This plot shows that the average 𝜇^ is only calculated for cases where the null hypothesis was rejected (where 
 p <0.05). This plot shows a similar trend to the first, but as the true 𝜇increases, the power of the test increases, meaning that 𝜇^ values where the null is rejected will be closer to the true value of 𝜇more often. This suggests that when there is a true effect (μ>0), the t-test is likely to reject the null hypothesis, and the observed estimates 𝜇^ will be more representative of the true effect size.
+
+
+## Problem 3
+Load the homicide data
+```{r, message=FALSE}
+homicide_data <- read_csv("data/homicide-data.csv")
+```
+
+Combine city and state into a single variable, then summarize total and unsolved cases by location
+```{r}
+homicide_summary <- homicide_data |> 
+  mutate(city_state = paste(city, state, sep = ", ")) |>
+  group_by(city_state) |>
+  summarize(
+    total_cases = n(),
+    unresolved_cases = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  )
+```
+The raw data consists of information on homicides across `r n_distinct(homicide_summary$city_state)` large U.S. cities, with `r nrow(homicide_data)` records. The dataset contains variables such as `reported_date`, `victim_last`, `victim_first`, `victim_race`, `victim_age`, `victim_sex`, `city`, `state`, `lat`, `lon`, and `disposition`. The reported_date ranges from 2007-01-01 to 2015-11-05, and victim ages from `r min(homicide_data$victim_age, na.rm = TRUE)` to 102, with some missing values. The disposition variable indicates the status of each case, with categories such as "Open/No arrest" representing unsolved homicides.
+
+
+Calculate Proportion of Unsolved Cases for Baltimore
+```{r}
+baltimore_data <- homicide_summary |> filter(city_state == "Baltimore, MD")
+baltimore_test <- prop.test(
+  x = baltimore_data$unresolved_cases, 
+  n = baltimore_data$total_cases
+) |> broom::tidy()
+
+baltimore_test |> select(estimate, conf.low, conf.high) |> knitr::kable()
+
+```
+
+Estimate Proportion of Unsolved Cases for All Cities
+```{r, include=FALSE}
+calculate_proportion <- function(unresolved, total) {
+  prop.test(x = unresolved, n = total) |> broom::tidy()
+}
+
+city_proportions <- homicide_summary |>
+  mutate(
+    test_results = map2(unresolved_cases, total_cases, calculate_proportion)
+  ) |> 
+  unnest(cols = c(test_results)) |>
+  select(city_state, estimate, conf.low, conf.high)
+
+```
+This table describes the estimated proportion and confidence intervals from the resulting tidy dataframe.
+
+Visualizing the Results
+```{r}
+city_proportions |> 
+  arrange(estimate) |> 
+  mutate(city_state = factor(city_state, levels = city_state)) |>
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Estimated Proportion of Unsolved Homicides by City",
+    x = "City and State",
+    y = "Proportion Unsolved (with 95% CI)"
+  ) +
+  theme_minimal()
+
+```
+
+In this plot cities are organized according to the proportion of unsolved homicides.
+
+
